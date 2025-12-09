@@ -70,14 +70,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}, filename)
 
 	// 4. Determine destination
-	// Save files to a dedicated /uploads directory inside the container.
-	// This directory will be mounted as a volume by Docker.
-	homeDir := "/uploads"
-	// Ensure the upload directory exists
-	if err := os.MkdirAll(homeDir, 0755); err != nil {
-		http.Error(w, "Server error preparing upload directory", http.StatusInternalServerError)
-		log.Printf("Error creating upload directory %s: %v", homeDir, err)
-		return
+	// Use current user's home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to /tmp if user lookup fails
+		homeDir = "/tmp"
 	}
 
 	// Base path: <home>/<filename>.ezfile.
