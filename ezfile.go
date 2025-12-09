@@ -11,18 +11,24 @@ import (
 
 	"strings"
 	"time"
-)
 
+	"flag"
+)
 
 func main() {
 	// Configure logging
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
+	// Define command-line flags for host and port
+	host := flag.String("host", "", "Host address to listen on (default: all interfaces)")
+	port := flag.String("port", "8080", "Port to listen on")
+	flag.Parse()
+
 	http.HandleFunc("/", uploadHandler)
 
-	port := ":8080"
-	log.Printf("Starting ezfile server on port %s...", port)
-	if err := http.ListenAndServe(port, nil); err != nil {
+	listenAddr := fmt.Sprintf("%s:%s", *host, *port)
+	log.Printf("Starting ezfile server on %s...", listenAddr)
+	if err := http.ListenAndServe(listenAddr, nil); err != nil {
 		log.Fatal(err)
 	}
 }

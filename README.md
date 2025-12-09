@@ -11,9 +11,13 @@ GOPROXY=direct go install github.com/ogpourya/ezfile@latest
 ## Run
 
 ```bash
-ezfile
+ezfile [--host <address>] [--port <port>]
 ```
-Server starts on `:8080`.
+
+Server starts on `:8080` by default. You can specify a host address and/or port:
+
+*   `ezfile --port 9000`
+*   `ezfile --host 127.0.0.1 --port 8081`
 
 ## Upload
 
