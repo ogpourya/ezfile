@@ -18,6 +18,7 @@ Server starts on `:8080` by default. You can specify a host address and/or port:
 
 *   `ezfile --port 9000`
 *   `ezfile --host 127.0.0.1 --port 8081`
+*   `ezfile --urlencoded` (Enables URL encoded mode)
 
 ## Upload
 
@@ -29,6 +30,11 @@ curl -F "file=@image.png" http://localhost:8080/
 **From pipe:**
 ```bash
 ls -la | curl -F "file=@-;filename=list.txt" http://localhost:8080/
+```
+
+**URL Encoded Mode (if enabled):**
+```bash
+curl http://localhost:8080/ -d file=$(cat /tmp/output)
 ```
 
 Files are saved to your home directory as `filename`.
