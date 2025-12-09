@@ -22,9 +22,12 @@ func main() {
 	// Define command-line flags for host and port
 	host := flag.String("host", "", "Host address to listen on (default: all interfaces)")
 	port := flag.String("port", "8080", "Port to listen on")
+	urlEncoded := flag.Bool("urlencoded", false, "Enable URL encoded mode (expects application/x-www-form-urlencoded)")
 	flag.Parse()
 
-	http.HandleFunc("/", uploadHandler)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		uploadHandler(w, r, *urlEncoded)
+	})
 
 	listenAddr := fmt.Sprintf("%s:%s", *host, *port)
 
@@ -80,28 +83,50 @@ func main() {
 	}
 }
 
-func uploadHandler(w http.ResponseWriter, r *http.Request) {
+func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Parse multipart form (no size limit enforced here, handled by io.Copy below)
+	var src io.Reader
+	var filename string
 
-	// 2. Retrieve the file
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "Invalid file. Use form field 'file'", http.StatusBadRequest)
-		return
+	if urlEncoded {
+		// Parse form for URL encoded data
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			return
+		}
+		content := r.FormValue("file")
+		if content == "" {
+			http.Error(w, "Invalid content. Use form field 'file'", http.StatusBadRequest)
+			return
+		}
+		src = strings.NewReader(content)
+		// No filename in urlencoded mode, so leave empty to trigger generation
+		filename = ""
+	} else {
+		// Parse multipart form (no size limit enforced here, handled by io.Copy below)
+		// 2. Retrieve the file
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "Invalid file. Use form field 'file'", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		src = file
+		filename = header.Filename
 	}
-	defer file.Close()
 
 	// 3. Security: Sanitize filename
 	// filepath.Base prevents directory traversal
-	filename := filepath.Base(header.Filename)
-	if filename == "." || filename == "/" || filename == "" {
+	if filename == "" || filename == "." || filename == "/" {
 		filename = fmt.Sprintf("upload_%d", time.Now().Unix())
+	} else {
+		filename = filepath.Base(filename)
 	}
+
 	// Additional sanitization: replace spaces and weird chars with underscores
 	safeFilename := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
@@ -129,7 +154,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	_, err = io.Copy(dst, file)
+	_, err = io.Copy(dst, src)
 	dst.Close()
 	if err != nil {
 		http.Error(w, "Server error saving file", http.StatusInternalServerError)
