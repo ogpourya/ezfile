@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"strings"
@@ -119,47 +118,25 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		homeDir = "/tmp"
 	}
 
-	// Base path: <home>/<filename>.ezfile.
-	// We will append the file type later
-	tempPath := filepath.Join(homeDir, safeFilename+".ezfile")
+	// Base path: <home>/<filename>
+	finalPath := filepath.Join(homeDir, safeFilename)
 
 	// 5. Save the file
-	dst, err := os.Create(tempPath)
+	dst, err := os.Create(finalPath)
 	if err != nil {
 		http.Error(w, "Server error creating file", http.StatusInternalServerError)
-		log.Printf("Error creating file %s: %v", tempPath, err)
+		log.Printf("Error creating file %s: %v", finalPath, err)
 		return
 	}
 	
 	_, err = io.Copy(dst, file)
-	dst.Close() // Close explicitly to flush before running 'file' command
+	dst.Close()
 	if err != nil {
 		http.Error(w, "Server error saving file", http.StatusInternalServerError)
-		log.Printf("Error writing to file %s: %v", tempPath, err)
+		log.Printf("Error writing to file %s: %v", finalPath, err)
 		return
 	}
 
-	// 6. Identify file type
-	// Run `file --brief --mime-type <file>`
-	cmd := exec.Command("file", "--brief", "--mime-type", tempPath)
-	out, err := cmd.Output()
-	fileType := "unknown"
-	if err == nil {
-		fileType = strings.TrimSpace(string(out))
-		// Sanitize mime type (e.g. "image/png" -> "image-png")
-		fileType = strings.ReplaceAll(fileType, "/", "-")
-	} else {
-		log.Printf("Warning: 'file' command failed: %v", err)
-	}
-
-	// 7. Rename to include type
-	// Final format: <original>.ezfile.<type>
-	finalPath := tempPath + "." + fileType
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		log.Printf("Error renaming file to %s: %v", finalPath, err)
-		finalPath = tempPath // Fallback to tempPath
-	}
-
-	log.Printf("Successfully saved: %s (Type: %s)", finalPath, fileType)
+	log.Printf("Successfully saved: %s", finalPath)
 	fmt.Fprintf(w, "Saved to: %s\n", filepath.Base(finalPath))
 }
