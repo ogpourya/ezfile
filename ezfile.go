@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-const (
-	// MaxUploadSize limits the size of the upload to 50MB
-	MaxUploadSize = 50 * 1024 * 1024
-)
 
 func main() {
 	// Configure logging
@@ -37,15 +33,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Security: Limit request body size
-	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadSize)
-
-	// Parse multipart form
-	if err := r.ParseMultipartForm(MaxUploadSize); err != nil {
-		http.Error(w, "File too large or invalid format", http.StatusBadRequest)
-		log.Printf("Upload rejected: %v", err)
-		return
-	}
+	// Parse multipart form (no size limit enforced here, handled by io.Copy below)
 
 	// 2. Retrieve the file
 	file, header, err := r.FormFile("file")
