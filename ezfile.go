@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,7 +28,54 @@ func main() {
 	http.HandleFunc("/", uploadHandler)
 
 	listenAddr := fmt.Sprintf("%s:%s", *host, *port)
-	log.Printf("Starting ezfile server on %s...", listenAddr)
+
+	log.Println("Starting ezfile server on:")
+	if *host == "" || *host == "0.0.0.0" {
+		// Print localhost
+		log.Printf("- http://localhost:%s", *port)
+
+		// Print other IPs
+		ifaces, err := net.Interfaces()
+		if err == nil {
+			for _, i := range ifaces {
+				addrs, err := i.Addrs()
+				if err == nil {
+					for _, addr := range addrs {
+						var ip net.IP
+						switch v := addr.(type) {
+						case *net.IPNet:
+							ip = v.IP
+						case *net.IPAddr:
+							ip = v.IP
+						}
+						// Print IPv4 and non-loopback (loopback covered by localhost)
+						if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
+							log.Printf("- http://%s:%s", ip.String(), *port)
+						}
+					}
+				}
+			}
+		}
+
+		// Fetch and print Public IP
+		client := http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get("https://ipv4.icanhazip.com/")
+		if err == nil {
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err == nil {
+				publicIP := strings.TrimSpace(string(body))
+				if publicIP != "" {
+					log.Printf("- http://%s:%s (Public)", publicIP, *port)
+				}
+			}
+		} else {
+			// Fail silently or log debug info if needed, but user just wants it shown if available
+		}
+	} else {
+		log.Printf("- http://%s:%s", *host, *port)
+	}
+
 	if err := http.ListenAndServe(listenAddr, nil); err != nil {
 		log.Fatal(err)
 	}
