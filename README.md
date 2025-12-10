@@ -37,7 +37,7 @@ ls -la | curl -F "file=@-;filename=list.txt" http://localhost:8080/
 curl http://localhost:8080/ -d file=$(cat /tmp/output)
 ```
 
-Files are saved to your home directory as `filename`.
+Files are saved to your home directory, with `upload_HH-MM-SS.<EXTENSION>` format and smart extension detection for URL encoded mode.
 
 ## Security Note
 

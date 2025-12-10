@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"flag"
+	"mime"
 )
 
 func main() {
@@ -89,7 +90,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		return
 	}
 
-	var src io.Reader
+	var src io.ReadSeeker
 	var filename string
 
 	if urlEncoded {
@@ -119,10 +120,27 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		filename = header.Filename
 	}
 
-	// 3. Security: Sanitize filename
+	// 3. Security: Sanitize filename and detect extension if needed
 	// filepath.Base prevents directory traversal
 	if filename == "" || filename == "." || filename == "/" {
-		filename = fmt.Sprintf("upload_%d", time.Now().Unix())
+		// Detect extension
+		head := make([]byte, 512)
+		n, _ := src.Read(head)
+		src.Seek(0, io.SeekStart) // Reset reader
+
+		contentType := http.DetectContentType(head[:n])
+		exts, _ := mime.ExtensionsByType(contentType)
+		extension := ""
+		if len(exts) > 0 {
+			extension = exts[0]
+			for _, ext := range exts {
+				if ext == ".txt" {
+					extension = ext
+					break
+				}
+			}
+		}
+		filename = fmt.Sprintf("upload_%s%s", time.Now().Format("15-04-05"), extension)
 	} else {
 		filename = filepath.Base(filename)
 	}
