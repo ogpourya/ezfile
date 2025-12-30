@@ -1,19 +1,17 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-
 	"strings"
 	"time"
-
-	"flag"
-	"mime"
 )
 
 func main() {
@@ -32,12 +30,13 @@ func main() {
 
 	listenAddr := fmt.Sprintf("%s:%s", *host, *port)
 
+	var displayIP string = "localhost"
 	log.Println("Starting ezfile server on:")
 	if *host == "" || *host == "0.0.0.0" {
-		// Print localhost
-		log.Printf("- http://localhost:%s", *port)
+		log.Printf("- http://localhost:%s (Private)", *port)
 
-		// Print other IPs
+		// 1. Get Local IPs and mark them
+		localIPs := make(map[string]bool)
 		ifaces, err := net.Interfaces()
 		if err == nil {
 			for _, i := range ifaces {
@@ -51,33 +50,59 @@ func main() {
 						case *net.IPAddr:
 							ip = v.IP
 						}
-						// Print IPv4 and non-loopback (loopback covered by localhost)
 						if ip != nil && ip.To4() != nil && !ip.IsLoopback() {
-							log.Printf("- http://%s:%s", ip.String(), *port)
+							ipStr := ip.String()
+							localIPs[ipStr] = true
+							label := ""
+							if ip.IsPrivate() {
+								label = " (Private)"
+								if displayIP == "localhost" {
+									displayIP = ipStr
+								}
+							} else {
+								label = " (Public)"
+								displayIP = ipStr
+							}
+							log.Printf("- http://%s:%s%s", ipStr, *port, label)
 						}
 					}
 				}
 			}
 		}
 
-		// Fetch and print Public IP
-		client := http.Client{Timeout: 2 * time.Second}
+		// 2. Fetch external Public IP (ignoring proxy)
+		client := http.Client{
+			Timeout: 2 * time.Second,
+			Transport: &http.Transport{
+				Proxy: nil, // This explicitly disables proxy for this request
+			},
+		}
 		resp, err := client.Get("https://ipv4.icanhazip.com/")
 		if err == nil {
 			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
-			if err == nil {
+			if body, err := io.ReadAll(resp.Body); err == nil {
 				publicIP := strings.TrimSpace(string(body))
 				if publicIP != "" {
-					log.Printf("- http://%s:%s (Public)", publicIP, *port)
+					// Only print if not already listed by local interfaces
+					if !localIPs[publicIP] {
+						log.Printf("- http://%s:%s (Public)", publicIP, *port)
+					}
+					displayIP = publicIP
 				}
 			}
-		} else {
-			// Fail silently or log debug info if needed, but user just wants it shown if available
 		}
 	} else {
 		log.Printf("- http://%s:%s", *host, *port)
+		displayIP = *host
 	}
+
+	fmt.Println("\nUsage examples:")
+	fmt.Printf("  curl -F \"file=@image.png\" http://%s:%s/\n", displayIP, *port)
+	fmt.Printf("  ls -la | curl -F \"file=@-;filename=list.txt\" http://%s:%s/\n", displayIP, *port)
+	if *urlEncoded {
+		fmt.Printf("  curl http://%s:%s/ -d file=$(cat /tmp/output)\n", displayIP, *port)
+	}
+	fmt.Println()
 
 	if err := http.ListenAndServe(listenAddr, nil); err != nil {
 		log.Fatal(err)
@@ -94,7 +119,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 	var filename string
 
 	if urlEncoded {
-		// Parse form for URL encoded data
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Failed to parse form", http.StatusBadRequest)
 			return
@@ -105,11 +129,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 			return
 		}
 		src = strings.NewReader(content)
-		// No filename in urlencoded mode, so leave empty to trigger generation
 		filename = ""
 	} else {
-		// Parse multipart form (no size limit enforced here, handled by io.Copy below)
-		// 2. Retrieve the file
 		file, header, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, "Invalid file. Use form field 'file'", http.StatusBadRequest)
@@ -120,13 +141,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		filename = header.Filename
 	}
 
-	// 3. Security: Sanitize filename and detect extension if needed
-	// filepath.Base prevents directory traversal
 	if filename == "" || filename == "." || filename == "/" {
-		// Detect extension
 		head := make([]byte, 512)
 		n, _ := src.Read(head)
-		src.Seek(0, io.SeekStart) // Reset reader
+		src.Seek(0, io.SeekStart)
 
 		contentType := http.DetectContentType(head[:n])
 		exts, _ := mime.ExtensionsByType(contentType)
@@ -145,7 +163,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		filename = filepath.Base(filename)
 	}
 
-	// Additional sanitization: replace spaces and weird chars with underscores
 	safeFilename := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
 			return r
@@ -153,18 +170,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		return '_'
 	}, filename)
 
-	// 4. Determine destination
-	// Use current user's home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		// Fallback to /tmp if user lookup fails
 		homeDir = "/tmp"
 	}
 
-	// Base path: <home>/<filename>
 	finalPath := filepath.Join(homeDir, safeFilename)
 
-	// 5. Save the file
 	dst, err := os.Create(finalPath)
 	if err != nil {
 		http.Error(w, "Server error creating file", http.StatusInternalServerError)

@@ -1,6 +1,6 @@
 # ezfile
 
-Minimal file upload server in Go for fast, on-the-fly usage.
+Minimal file upload server in Go.
 
 ## Install
 
@@ -8,37 +8,18 @@ Minimal file upload server in Go for fast, on-the-fly usage.
 GOPROXY=direct go install github.com/ogpourya/ezfile@latest
 ```
 
-## Run
+## Usage
 
 ```bash
-ezfile [--host <address>] [--port <port>]
+ezfile [--host <address>] [--port <port>] [--urlencoded]
 ```
 
-Server starts on `:8080` by default. You can specify a host address and/or port:
+- **File upload:** `curl -F "file=@image.png" http://localhost:8080/`
+- **Piped upload:** `ls -la | curl -F "file=@-;filename=list.txt" http://localhost:8080/`
+- **URL encoded:** `curl http://localhost:8080/ -d file=$(cat output.txt)` (requires `--urlencoded`)
 
-*   `ezfile --port 9000`
-*   `ezfile --host 127.0.0.1 --port 8081`
-*   `ezfile --urlencoded` (Enables URL encoded mode)
+Files are saved to `~/` with timestamped names and automatic extension detection.
 
-## Upload
+## Security
 
-**From file:**
-```bash
-curl -F "file=@image.png" http://localhost:8080/
-```
-
-**From pipe:**
-```bash
-ls -la | curl -F "file=@-;filename=list.txt" http://localhost:8080/
-```
-
-**URL Encoded Mode (if enabled):**
-```bash
-curl http://localhost:8080/ -d file=$(cat /tmp/output)
-```
-
-Files are saved to your home directory, with `upload_HH-MM-SS.<EXTENSION>` format and smart extension detection for URL encoded mode.
-
-## Security Note
-
-This server is designed for quick, on-the-fly file uploads. It has **no authentication** and **no upload limit**, meaning it has **low security**. Use with caution and only in trusted environments or behind appropriate access controls.
+**No authentication. No limits.** Use only in trusted networks.
